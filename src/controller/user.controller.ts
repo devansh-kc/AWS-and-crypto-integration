@@ -9,7 +9,7 @@ import { DECIMAL } from "./worker.controller";
 import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 
 
-const connection = new Connection("https://api.testnet.solana.com/");
+const connection = new Connection("https://api.testnet.solana.com");
 const PARENT_WALLET_ADDRESS = process.env.PARENT_WALLET
 
 const prismaClient = new PrismaClient();
@@ -21,6 +21,7 @@ export async function SignUpUser(req: Request, res: Response) {
     new Uint8Array(signature.data),
     new PublicKey(publicKey).toBytes()
   );
+
 
   const existingUser = await prismaClient.user.findFirst({
     where: {
@@ -63,6 +64,7 @@ export async function GenerateTasks(req: Request, res: Response) {
   const userId = req.userId;
 
   const parsedData = createTaskInput.safeParse(body);
+  console.log(parsedData)
   const user = await prismaClient.user.findFirst({
     where: {
       id: userId,
