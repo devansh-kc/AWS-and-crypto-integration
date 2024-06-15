@@ -8,9 +8,8 @@ import { createTaskInput } from "../zodSchema/createTaskInput.zodSchema";
 import { DECIMAL } from "./worker.controller";
 import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 
-
-const connection = new Connection("https://api.testnet.solana.com");
-const PARENT_WALLET_ADDRESS = process.env.PARENT_WALLET
+const connection = new Connection("https://api.devnet.solana.com/");
+const PARENT_WALLET_ADDRESS = process.env.PARENT_WALLET;
 
 const prismaClient = new PrismaClient();
 export async function SignUpUser(req: Request, res: Response) {
@@ -21,7 +20,6 @@ export async function SignUpUser(req: Request, res: Response) {
     new Uint8Array(signature.data),
     new PublicKey(publicKey).toBytes()
   );
-
 
   const existingUser = await prismaClient.user.findFirst({
     where: {
@@ -64,7 +62,7 @@ export async function GenerateTasks(req: Request, res: Response) {
   const userId = req.userId;
 
   const parsedData = createTaskInput.safeParse(body);
-  console.log(parsedData)
+  console.log(parsedData);
   const user = await prismaClient.user.findFirst({
     where: {
       id: userId,
@@ -80,28 +78,8 @@ export async function GenerateTasks(req: Request, res: Response) {
       maxSupportedTransactionVersion: 1,
     }
   );
-
-  console.log(transaction);
-
-  if (
-    (transaction?.meta?.postBalances[1] ?? 0) -
-      (transaction?.meta?.preBalances[1] ?? 0) !==
-    100000000
-  ) {
-    return res.status(411).json({
-      message: "Transaction signature/amount incorrect",
-    });
-  }
-
-  if (
-    transaction?.transaction.message.getAccountKeys().get(1)?.toString() !==
-    PARENT_WALLET_ADDRESS
-  ) {
-    return res.status(411).json({
-      message: "Transaction sent to wrong address",
-    });
-  }
-
+  const postbalance = transaction?.meta?.postBalances[0]!;
+  const preBalance = transaction?.meta?.preBalances[0]!;
   if (
     transaction?.transaction.message.getAccountKeys().get(0)?.toString() !==
     user?.address
@@ -110,6 +88,26 @@ export async function GenerateTasks(req: Request, res: Response) {
       message: "Transaction sent to wrong address",
     });
   }
+
+  if (
+    transaction?.transaction.message.getAccountKeys().get(0)?.toString() !==
+    PARENT_WALLET_ADDRESS
+  ) {
+    return res.status(411).json({
+      message: "Transaction sent to wrong address",
+    });
+  }
+
+  // if (
+  //   (transaction?.meta?.postBalances[1] ?? 0) -
+  //     (transaction?.meta?.preBalances[1] ?? 0) !==
+  //   100000000
+  // ) {
+  //   return res.status(411).json({
+  //     message: "Transaction signature/amount incorrect",
+  //   });
+  // }
+
   prismaClient.$transaction(async (tx) => {
     const response = await prismaClient.task.create({
       data: {

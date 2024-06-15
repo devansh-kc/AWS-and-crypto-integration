@@ -1,13 +1,26 @@
 import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { ApiResponse } from "../utils/ApiResponse";
-import { JWT_SECRET_FOR_WORKER } from "..";
+import { JWT_SECRET_FOR_WORKER } from "../index";
 import { Request, Response } from "express";
 import { number } from "zod";
 import { createSubmissionTaskInput } from "../zodSchema/createTaskInput.zodSchema";
-import { error } from "console";
+import {
+  Connection,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  Keypair,
+  sendAndConfirmTransaction,
+} from "@solana/web3.js";
+
+import { decode } from "bs58";
+import nacl from "tweetnacl";
+
+export const DECIMAL = 1000_000;
 
 const prismaClient = new PrismaClient();
+const connection = new Connection("https://api.devnet.solana.com/");
 const MAX_SUBMISSIONS = 100;
 export async function GetAnotherTask(userId: number) {
   const task = await prismaClient.task.findFirst({
@@ -32,10 +45,22 @@ export async function GetAnotherTask(userId: number) {
 }
 
 export async function SignUpWorkerUser(req: Request, res: Response) {
-  const WalletToken = "sfnodsgnifdgifdgiuufdninfidbbiufdnawsd";
+  const { publicKey, signature } = req.body;
+  const message = new TextEncoder().encode(
+    "Sign into mechanical turks as a Worker"
+  );
+  const result = nacl.sign.detached.verify(
+    message,
+    new Uint8Array(signature.data),
+    new PublicKey(publicKey).toBytes()
+  );
+  if (!result) {
+    return res.status(411).json({ message: "Message incorrect " });
+  }
+
   const existingUser = await prismaClient.worker.findFirst({
     where: {
-      address: WalletToken,
+      address: publicKey,
     },
   });
 
@@ -49,11 +74,12 @@ export async function SignUpWorkerUser(req: Request, res: Response) {
 
     res.status(200).json({
       token,
+      amount: existingUser.pending_amount / DECIMAL,
     });
   } else {
     const user = await prismaClient.worker.create({
       data: {
-        address: WalletToken,
+        address: publicKey,
         pending_amount: 0,
         locked_amount: 0,
       },
@@ -66,6 +92,7 @@ export async function SignUpWorkerUser(req: Request, res: Response) {
     );
     res.status(200).json({
       token,
+      amount: 0,
     });
   }
 }
@@ -87,7 +114,6 @@ export async function getNextTask(req: Request, res: Response) {
   }
 }
 
-export const DECIMAL = 1000_000_000;
 export async function submitTask(req: Request, res: Response) {
   // @ts-ignore
   const userId = req.userId;
@@ -173,7 +199,29 @@ export async function WorkerPayout(req: Request, res: Response) {
     res.status(403).json({ message: "User not found " });
   }
   const address = worker?.address;
-  const trnxId = "123456789789";
+  const transaction = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: new PublicKey(process.env.PARENT_WALLET!),
+      toPubkey: new PublicKey(worker?.address!),
+      lamports: (1000_000_000 * worker?.pending_amount!) / DECIMAL,
+    })
+  );
+
+  const keypair = Keypair.fromSecretKey(decode(process.env.SOLANA_PRIVATE_KEY!));
+
+  // TODO: There's a double spending problem here
+  // The user can request the withdrawal multiple times
+  // Can u figure out a way to fix it?
+  let signature = "";
+  try {
+    signature = await sendAndConfirmTransaction(connection, transaction, [
+      keypair,
+    ]);
+  } catch (e) {
+    return res.json({
+      message: "Transaction failed",
+    });
+  }
 
   const payouthandler = await prismaClient.$transaction(async (tx) => {
     await tx.worker.update({
@@ -191,7 +239,7 @@ export async function WorkerPayout(req: Request, res: Response) {
         user_id: Number(userId),
         amount: Number(worker?.pending_amount),
         status: "Processing",
-        signature: trnxId,
+        signature: signature,
       },
     });
   });
