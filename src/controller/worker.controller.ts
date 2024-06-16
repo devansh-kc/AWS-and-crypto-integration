@@ -195,10 +195,14 @@ export async function WorkerPayout(req: Request, res: Response) {
       id: userId,
     },
   });
+  console.log(worker);
   if (!worker) {
     res.status(403).json({ message: "User not found " });
   }
   const address = worker?.address;
+  if(worker?.pending_amount ==0){
+    return res.status(500).json({message:"You can not take any amount because you haven't earned anything yet."})
+  }
   const transaction = new Transaction().add(
     SystemProgram.transfer({
       fromPubkey: new PublicKey(process.env.PARENT_WALLET!),
@@ -207,7 +211,11 @@ export async function WorkerPayout(req: Request, res: Response) {
     })
   );
 
-  const keypair = Keypair.fromSecretKey(decode(process.env.SOLANA_PRIVATE_KEY!));
+  console.log(worker?.address);
+  console.log(transaction);
+  const keypair = Keypair.fromSecretKey(
+    decode(process.env.SOLANA_PRIVATE_KEY!)
+  );
 
   // TODO: There's a double spending problem here
   // The user can request the withdrawal multiple times
@@ -223,17 +231,21 @@ export async function WorkerPayout(req: Request, res: Response) {
     });
   }
 
-  const payouthandler = await prismaClient.$transaction(async (tx) => {
+  await prismaClient.$transaction(async (tx) => {
     await tx.worker.update({
       where: {
-        id: userId,
+        id: Number(userId),
       },
       data: {
         pending_amount: {
           decrement: worker?.pending_amount,
         },
+        locked_amount: {
+          increment: worker?.pending_amount,
+        },
       },
     });
+
     await tx.payout.create({
       data: {
         user_id: Number(userId),

@@ -80,6 +80,8 @@ export async function GenerateTasks(req: Request, res: Response) {
   );
   const postbalance = transaction?.meta?.postBalances[0]!;
   const preBalance = transaction?.meta?.preBalances[0]!;
+
+  console.log(transaction);
   if (
     transaction?.transaction.message.getAccountKeys().get(0)?.toString() !==
     user?.address
@@ -91,7 +93,7 @@ export async function GenerateTasks(req: Request, res: Response) {
 
   if (
     transaction?.transaction.message.getAccountKeys().get(0)?.toString() !==
-    PARENT_WALLET_ADDRESS
+    PARENT_WALLET_ADDRESS!
   ) {
     return res.status(411).json({
       message: "Transaction sent to wrong address",
