@@ -192,16 +192,18 @@ export async function WorkerPayout(req: Request, res: Response) {
 
   const worker = await prismaClient.worker.findFirst({
     where: {
-      id: userId,
+      id: Number(userId),
     },
   });
   console.log(worker);
   if (!worker) {
     res.status(403).json({ message: "User not found " });
   }
-  const address = worker?.address;
-  if(worker?.pending_amount ==0){
-    return res.status(500).json({message:"You can not take any amount because you haven't earned anything yet."})
+  if (worker?.pending_amount == 0) {
+    return res.status(500).json({
+      message:
+        "You can not take any amount because you haven't earned anything yet.",
+    });
   }
   const transaction = new Transaction().add(
     SystemProgram.transfer({
@@ -255,6 +257,7 @@ export async function WorkerPayout(req: Request, res: Response) {
       },
     });
   });
+  console.log("done")
 
   res
     .status(200)
